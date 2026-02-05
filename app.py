@@ -4,10 +4,9 @@ from datetime import datetime
 import google.generativeai as genai
 import json
 
-# --- 1. SETUP & CONFIG ---
+# --- 1. CONFIG & SETUP ---
 st.set_page_config(page_title="Smart Anesthesia", page_icon="💉", layout="wide")
 
-# ใส่ CSS ตรงนี้เลย (ไม่ต้องแยกไฟล์ style.css)
 st.markdown("""
 <style>
     html, body, [class*="css"] { font-family: 'Sarabun', sans-serif; }
@@ -17,17 +16,18 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. AI ENGINE (รวมฟังก์ชันไว้ที่นี่เลย) ---
+# --- 2. AI FUNCTION ---
 def get_gemini_response(command_text):
-    # เช็ค Key
+    # เช็ค Key ใน Secrets
     if "GEMINI_API_KEY" not in st.secrets:
         return {"error": "Critical: API Key not found in Secrets!"}
 
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # Prompt สั่งงาน AI
+        # 🟢 แก้ไขตรงนี้: เปลี่ยนเป็น 'gemini-pro' ที่เสถียรกว่า
+        model = genai.GenerativeModel('gemini-pro')
+        
         prompt = f"""
         Act as an Anesthesia Assistant. Analyze this command: "{command_text}"
         
@@ -38,14 +38,13 @@ def get_gemini_response(command_text):
         """
         
         response = model.generate_content(prompt)
-        # Clean text กันเหนียว
         text = response.text.replace("```json", "").replace("```", "").strip()
         return json.loads(text)
         
     except Exception as e:
         return {"error": str(e)}
 
-# --- 3. USER INTERFACE ---
+# --- 3. UI SECTION ---
 if 'logs' not in st.session_state:
     st.session_state.logs = pd.DataFrame(columns=['Time', 'Item', 'Qty', 'Unit', 'Category'])
 
@@ -53,20 +52,18 @@ col1, col2 = st.columns([1, 2])
 
 with col1:
     st.title("🏥 Smart Anesthesia")
-    st.info("💡 Try saying/typing: 'Give Ephedrine 6 mg' or 'BP Drop'")
+    st.info("💡 Try: 'Give Fentanyl 50 mcg' or 'BP Drop'")
     
-    # Input
     cmd = st.text_input("Command:", key="cmd_input")
     
     if st.button("Submit", type="primary"):
         if cmd:
-            with st.spinner("AI is thinking..."):
+            with st.spinner("AI Processing..."):
                 result = get_gemini_response(cmd)
                 
                 if "error" in result:
                     st.error(result['error'])
                 else:
-                    # บันทึกข้อมูล
                     new_row = {
                         'Time': datetime.now().strftime("%H:%M:%S"),
                         'Item': result.get('item', 'Unknown'),
@@ -81,7 +78,6 @@ with col2:
     st.subheader("📊 Live Dashboard")
     
     if not st.session_state.logs.empty:
-        # Metrics
         narc_sum = st.session_state.logs[st.session_state.logs['Category'] == 'Narcotic']['Qty'].sum()
         crit_count = len(st.session_state.logs[st.session_state.logs['Category'] == 'Critical Event'])
         
@@ -90,5 +86,4 @@ with col2:
         m2.metric("Critical Events", f"{crit_count}", "Times", delta_color="inverse")
         m3.metric("Total Logs", len(st.session_state.logs))
         
-        # Table
         st.dataframe(st.session_state.logs, use_container_width=True, hide_index=True)
